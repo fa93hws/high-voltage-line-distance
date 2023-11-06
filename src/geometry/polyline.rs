@@ -29,6 +29,16 @@ impl PolyLine {
             a.min(line.distance_to_point(&point))
         })
     }
+
+    pub fn get_vertices(&self) -> Vec<Point> {
+        let mut points = self
+            .lines
+            .iter()
+            .map(|line| line.a.clone())
+            .collect::<Vec<Point>>();
+        points.push(self.lines.last().unwrap().b.clone());
+        points
+    }
 }
 
 #[cfg(test)]

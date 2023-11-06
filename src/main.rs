@@ -1,7 +1,12 @@
-use crate::{data::get_data, geometry::geo_position::GeoPosition};
+use std::path::Path;
+
+use crate::data::get_data;
+use crate::geometry::geo_position::GeoPosition;
+use crate::vtk::export_suburb_to_vtk;
 
 mod data;
 mod geometry;
+mod vtk;
 
 const DATA: &str = include_str!("./data/data.json");
 
@@ -13,6 +18,7 @@ fn main() {
     }
     .to_cartesian();
 
+    export_suburb_to_vtk(&Path::new(".").join("debug"), &suburb_data);
     let distances = suburb_data[0]
         .high_voltage_lines
         .iter()

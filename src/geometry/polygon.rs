@@ -46,6 +46,10 @@ impl Polygon {
 
         Polygon { lines }
     }
+
+    pub fn get_vertices(&self) -> Vec<Point> {
+        self.lines.iter().map(|line| line.a.clone()).collect()
+    }
 }
 
 #[cfg(test)]
