@@ -1,5 +1,6 @@
 use crate::geometry::{
     basic::Point, geo_position::GeoPosition, line::LineSegment, polygon::Polygon,
+    polyline::PolyLine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,7 +14,7 @@ struct RawSuburbData {
 pub struct SuburbData {
     pub name: String,
     pub catchment: Polygon,
-    pub high_voltage_lines: Vec<Vec<LineSegment>>,
+    pub high_voltage_lines: Vec<PolyLine>,
 }
 
 fn raw_position_to_point(latitude_degree: f64, longitude_degree: f64) -> Point {
@@ -43,27 +44,17 @@ fn parse_polygon(raw_points: Vec<[f64; 2]>) -> Polygon {
     Polygon::new(lines)
 }
 
-fn parse_high_voltage_lines(raw_value: Vec<Vec<[f64; 3]>>) -> Vec<Vec<LineSegment>> {
-    let mut high_voltage_lines = Vec::<Vec<LineSegment>>::new();
-    for raw_line in raw_value {
-        let mut lines = Vec::<LineSegment>::new();
-        if raw_line.len() < 2 {
-            panic!(
-                "need at least two points in power line, got '{:?}'",
-                raw_line
-            )
-        }
-        let mut idx = 0;
-        while idx < raw_line.len() - 1 {
-            lines.push(LineSegment {
-                a: raw_position_to_point(raw_line[idx][1], raw_line[idx][0]),
-                b: raw_position_to_point(raw_line[idx + 1][1], raw_line[idx + 1][0]),
-            });
-            idx += 1;
-        }
-        high_voltage_lines.push(lines);
-    }
-    high_voltage_lines
+fn parse_high_voltage_lines(raw_value: Vec<Vec<[f64; 3]>>) -> Vec<PolyLine> {
+    raw_value
+        .into_iter()
+        .map(|raw_points| {
+            let points = raw_points
+                .into_iter()
+                .map(|p| raw_position_to_point(p[1], p[0]))
+                .collect();
+            PolyLine::new(points)
+        })
+        .collect()
 }
 
 pub fn get_data(json_str: &str) -> Vec<SuburbData> {
@@ -121,14 +112,8 @@ mod test {
                 },
             ])),
             high_voltage_lines: Vec::from([
-                Vec::from([LineSegment {
-                    a: points[0].clone(),
-                    b: points[1].clone(),
-                }]),
-                Vec::from([LineSegment {
-                    a: points[0].clone(),
-                    b: points[2].clone(),
-                }]),
+                PolyLine::new(Vec::from([points[0].clone(), points[1].clone()])),
+                PolyLine::new(Vec::from([points[0].clone(), points[2].clone()])),
             ]),
         };
         let expected_data_bar = SuburbData {
@@ -148,14 +133,8 @@ mod test {
                 },
             ])),
             high_voltage_lines: Vec::from([
-                Vec::from([LineSegment {
-                    a: points[0].clone(),
-                    b: points[2].clone(),
-                }]),
-                Vec::from([LineSegment {
-                    a: points[0].clone(),
-                    b: points[1].clone(),
-                }]),
+                PolyLine::new(Vec::from([points[0].clone(), points[2].clone()])),
+                PolyLine::new(Vec::from([points[0].clone(), points[1].clone()])),
             ]),
         };
         let mut suburb_data = get_data(TEST_DATA);
@@ -176,14 +155,10 @@ mod test {
             .assert_close_to(&expected_data_bar.catchment, 1.0);
 
         for (i, high_voltage_line) in data_foo.high_voltage_lines.iter().enumerate() {
-            for (j, segment) in high_voltage_line.iter().enumerate() {
-                segment.assert_close_to(&expected_data_foo.high_voltage_lines[i][j], 1.0)
-            }
+            high_voltage_line.assert_close_to(&expected_data_foo.high_voltage_lines[i], 1.0)
         }
         for (i, high_voltage_line) in data_bar.high_voltage_lines.iter().enumerate() {
-            for (j, segment) in high_voltage_line.iter().enumerate() {
-                segment.assert_close_to(&expected_data_bar.high_voltage_lines[i][j], 1.0)
-            }
+            high_voltage_line.assert_close_to(&expected_data_bar.high_voltage_lines[i], 1.0)
         }
     }
 }

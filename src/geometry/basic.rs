@@ -1,6 +1,7 @@
 pub const TOL: f64 = 1e-14;
 use std::fmt::Display;
 
+#[derive(Debug)]
 pub struct Point {
     pub x: f64,
     pub y: f64,
@@ -64,7 +65,7 @@ impl Vector {
 }
 
 #[cfg(test)]
-mod test_utils {
+pub mod test_utils {
     pub fn assert_close_to(left: f64, right: f64, delta: f64) {
         if f64::is_nan(left) {
             panic!("left is nan")
