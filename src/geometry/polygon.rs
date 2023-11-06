@@ -48,6 +48,30 @@ impl Polygon {
 }
 
 #[cfg(test)]
+impl Polygon {
+    pub fn assert_close_to(&self, p: &Polygon, delta: f64) {
+        let mut idx_not_match = Vec::<usize>::new();
+        for (idx, line) in self.lines.iter().enumerate() {
+            if !line.close_to(&p.lines[idx], delta) {
+                idx_not_match.push(idx);
+            }
+        }
+        if idx_not_match.is_empty() {
+            return;
+        }
+        let mut error_msg = "Polygon does not match\n".to_owned();
+        for idx in idx_not_match {
+            error_msg.push_str(&format!("line at idx={idx} does not match\n"));
+            error_msg.push_str(&format!(
+                "  left  = {}\n  right = {}\n",
+                self.lines[idx], p.lines[idx]
+            ));
+        }
+        panic!("{error_msg}");
+    }
+}
+
+#[cfg(test)]
 mod test {
     use super::super::basic::Point;
     use super::*;

@@ -82,9 +82,20 @@ impl LineSegment {
 }
 
 #[cfg(test)]
+impl LineSegment {
+    pub fn close_to(&self, l: &LineSegment, delta: f64) -> bool {
+        self.a.close_to(&l.a, delta) && self.b.close_to(&l.b, delta)
+    }
+    pub fn assert_close_to(&self, l: &LineSegment, delta: f64) {
+        if !self.close_to(l, delta) {
+            panic!("left is not close to right with delta '{delta}'\nleft  = {self}\nright = {l}")
+        }
+    }
+}
+
+#[cfg(test)]
 mod test_line_segment {
     use super::*;
-    use crate::geometry::basic::test_utils;
 
     #[test]
     fn find_projection_point_outside() {

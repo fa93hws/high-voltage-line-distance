@@ -31,13 +31,12 @@ impl Display for Point {
 
 #[cfg(test)]
 impl Point {
+    pub fn close_to(&self, p: &Point, delta: f64) -> bool {
+        self.x - p.x < delta && p.x - self.x < delta && self.y - p.y < delta && p.y - self.y < delta
+    }
     pub fn assert_close_to(&self, p: &Point, delta: f64) {
-        if self.x - p.x > delta
-            || p.x - self.x > delta
-            || self.y - p.y > delta
-            || p.y - self.y > delta
-        {
-            panic!("left is not close to right with delta '{delta}'\nleft  = {self}\nright = {p}",)
+        if !self.close_to(p, delta) {
+            panic!("left is not close to right with delta '{delta}'\nleft  = {self}\nright = {p}")
         }
     }
 }
@@ -65,9 +64,7 @@ impl Vector {
 }
 
 #[cfg(test)]
-pub mod test_utils {
-    use super::Point;
-
+mod test_utils {
     pub fn assert_close_to(left: f64, right: f64, delta: f64) {
         if f64::is_nan(left) {
             panic!("left is nan")
