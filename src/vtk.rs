@@ -63,7 +63,19 @@ fn high_voltages_to_vtk(lines: &Vec<PolyLine>) -> String {
     vtk_content
 }
 
-pub fn export_suburb_to_vtk(dir: &Path, data: &Vec<SuburbData>) {
+fn circle_to_vtk(origin: &Point, radius: f64) -> String {
+    const SAMPLE_SIZE: usize = 64;
+    let points: [Point; SAMPLE_SIZE] = core::array::from_fn(|idx| {
+        2.0 * (idx as f64) * std::f64::consts::PI / (SAMPLE_SIZE as f64)
+    })
+    .map(|angle| Point {
+        x: origin.x + angle.cos() * radius,
+        y: origin.y + angle.sin() * radius,
+    });
+    catchment_to_vtk(&Polygon::new(Vec::from(points)))
+}
+
+pub fn export_suburb_to_vtk(dir: &Path, data: &Vec<SuburbData>, point_for_test: &Point) {
     fs::create_dir_all(dir).unwrap();
     for suburb in data {
         let catchment_content = catchment_to_vtk(&suburb.catchment);
@@ -79,4 +91,14 @@ pub fn export_suburb_to_vtk(dir: &Path, data: &Vec<SuburbData>) {
         )
         .expect("Unable to write file");
     }
+    fs::write(
+        dir.join("address_100m.vtk"),
+        circle_to_vtk(&point_for_test, 100.0),
+    )
+    .expect("Unable to write file");
+    fs::write(
+        dir.join("address_200m.vtk"),
+        circle_to_vtk(&point_for_test, 200.0),
+    )
+    .expect("Unable to write file");
 }

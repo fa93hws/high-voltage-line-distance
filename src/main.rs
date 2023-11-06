@@ -18,7 +18,7 @@ fn main() {
     }
     .to_cartesian();
 
-    export_suburb_to_vtk(&Path::new(".").join("debug"), &suburb_data);
+    export_suburb_to_vtk(&Path::new(".").join("debug"), &suburb_data, &test_location);
     let distances = suburb_data[0]
         .high_voltage_lines
         .iter()
