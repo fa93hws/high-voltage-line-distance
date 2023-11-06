@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use super::basic::TOL;
+use super::basic::{Point, TOL};
 use super::line::LineSegment;
 
 pub struct Polygon {
@@ -20,27 +20,28 @@ impl Display for Polygon {
 }
 
 impl Polygon {
-    pub fn new(lines: Vec<LineSegment>) -> Self {
-        if lines.len() < 3 {
+    pub fn new(points: Vec<Point>) -> Self {
+        if points.len() < 3 || (points.len() == 3 && points[0].distance_to(&points[2]) < TOL) {
             panic!(
-                "At least 3 lines is necessary to form a polygon, but got {}",
-                lines.len()
+                "At least 3 points are necessary to form a polygon, but got {:?}",
+                points
             )
         }
-
-        let mut idx = 1;
-        while idx < lines.len() {
-            let end = &lines[idx - 1].b;
-            let start = &lines[idx].a;
-            if end.distance_to(start) > TOL {
-                panic!("End point of the previous line must be the start point of the current line\nprevious = {}\ncurrent  = {}", lines[idx-1], lines[idx])
-            }
+        let mut idx = 0;
+        let mut lines = Vec::<LineSegment>::new();
+        while idx < points.len() - 1 {
+            lines.push(LineSegment::new(
+                points[idx].clone(),
+                points[idx + 1].clone(),
+            ));
             idx += 1;
         }
-        let start = &lines[0].a;
-        let end = &lines[lines.len() - 1].b;
-        if start.distance_to(end) > TOL {
-            panic!("End point of the last line must be the start point of the first line\nfirst = {}\nlast  = {}", lines[0], lines[lines.len() - 1]);
+        // we need to form a closed shape, if the last point is not same as the first point.
+        if points[0].distance_to(&points[points.len() - 1]) > TOL {
+            lines.push(LineSegment::new(
+                points[points.len() - 1].clone(),
+                points[0].clone(),
+            ));
         }
 
         Polygon { lines }
@@ -77,31 +78,37 @@ mod test {
     use super::*;
 
     #[test]
-    #[should_panic(expected = "At least 3 lines is necessary to form a polygon, but got 2")]
-    fn polygon_new_2_lines() {
+    #[should_panic]
+    fn polygon_failed_new_two_points() {
         Polygon::new(Vec::from([
-            LineSegment::new(Point { x: 0.0, y: 0.0 }, Point { x: 1.0, y: 1.0 }),
-            LineSegment::new(Point { x: 1.0, y: 1.0 }, Point { x: 2.0, y: 2.0 }),
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 1.0, y: 1.0 },
         ]));
     }
 
     #[test]
     #[should_panic]
-    fn polygon_new_disconnected_middle() {
+    fn polygon_failed_new_three_closed_points() {
         Polygon::new(Vec::from([
-            LineSegment::new(Point { x: 0.0, y: 0.0 }, Point { x: 1.0, y: 1.0 }),
-            LineSegment::new(Point { x: 1.0, y: 1.0 }, Point { x: 1.5, y: 1.5 }),
-            LineSegment::new(Point { x: 2.0, y: 1.0 }, Point { x: 0.0, y: 0.0 }),
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 1.0, y: 1.0 },
+            Point { x: 0.0, y: 0.0 },
         ]));
     }
 
     #[test]
-    #[should_panic]
-    fn polygon_new_disconnected_end() {
-        Polygon::new(Vec::from([
-            LineSegment::new(Point { x: 0.0, y: 0.0 }, Point { x: 1.0, y: 1.0 }),
-            LineSegment::new(Point { x: 1.0, y: 1.0 }, Point { x: 2.0, y: 2.0 }),
-            LineSegment::new(Point { x: 2.0, y: 1.0 }, Point { x: 1.0, y: 0.0 }),
+    fn polygon_new_points_not_closed() {
+        let polygon = Polygon::new(Vec::from([
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 1.0, y: 1.0 },
+            Point { x: 1.0, y: 0.0 },
         ]));
+        let expected_polygon = Polygon::new(Vec::from([
+            Point { x: 0.0, y: 0.0 },
+            Point { x: 1.0, y: 1.0 },
+            Point { x: 1.0, y: 0.0 },
+            Point { x: 0.0, y: 0.0 },
+        ]));
+        polygon.assert_close_to(&expected_polygon, 1e-10)
     }
 }
