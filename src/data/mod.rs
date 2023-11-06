@@ -1,10 +1,8 @@
-mod geo_position;
-
-use crate::geometry::{basic::Point, line::LineSegment, polygon::Polygon};
+use crate::geometry::{
+    basic::Point, geo_position::GeoPosition, line::LineSegment, polygon::Polygon,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-use self::geo_position::GeoPosition;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct RawSuburbData {
