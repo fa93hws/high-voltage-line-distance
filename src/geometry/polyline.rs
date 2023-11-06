@@ -1,3 +1,7 @@
+const NUM_THREADS: u8 = 2;
+
+use std::sync::{Arc, Mutex};
+
 use super::{basic::Point, line::LineSegment};
 
 pub struct PolyLine {
@@ -25,8 +29,34 @@ impl PolyLine {
     }
 
     pub fn distance_to(&self, point: &Point) -> f64 {
-        self.lines.iter().fold(f64::INFINITY, |a, line| {
-            a.min(line.distance_to_point(&point))
+        std::thread::scope(|scope| {
+            let counter = Arc::new(Mutex::<usize>::new(0));
+            let mut threads = Vec::new();
+            for _ in 0..NUM_THREADS {
+                let counter = Arc::clone(&counter);
+                threads.push(scope.spawn(move || {
+                    let mut distances = Vec::new();
+                    loop {
+                        let line_idx = {
+                            let mut idx = counter.lock().unwrap();
+                            let line_idx = *idx;
+                            *idx += 1;
+                            line_idx
+                        };
+                        if line_idx >= self.lines.len() {
+                            break;
+                        }
+                        distances.push(self.lines[line_idx].distance_to_point(&point));
+                    }
+                    distances
+                }));
+            }
+
+            let mut distances: Vec<f64> = Vec::new();
+            for thread in threads {
+                distances.extend(thread.join().unwrap());
+            }
+            distances.iter().fold(f64::INFINITY, |a, d| a.min(*d))
         })
     }
 
