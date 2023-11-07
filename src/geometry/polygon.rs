@@ -82,7 +82,7 @@ mod test {
     use super::*;
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "At least 3 points are necessary to form a polygon")]
     fn polygon_failed_new_two_points() {
         Polygon::new(Vec::from([
             Point { x: 0.0, y: 0.0 },
@@ -91,7 +91,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "At least 3 points are necessary to form a polygon")]
     fn polygon_failed_new_three_closed_points() {
         Polygon::new(Vec::from([
             Point { x: 0.0, y: 0.0 },

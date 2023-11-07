@@ -2,9 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::data::SuburbData;
-use crate::geometry::basic::Point;
-use crate::geometry::polygon::Polygon;
-use crate::geometry::polyline::PolyLine;
+use crate::geometry::*;
 
 fn catchment_to_vtk(polygon: &Polygon) -> String {
     let mut vtk_content = "# vtk DataFile Version 1.0\n".to_owned();
