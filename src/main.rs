@@ -82,12 +82,19 @@ fn main() {
     let suburb_data = get_data(DATA);
 
     export_suburb_to_vtk(&Path::new(".").join("debug"), &suburb_data, &test_location);
-    let distance = suburb_data[0]
-        .high_voltage_lines
+    let distance = suburb_data
         .iter()
-        .fold(f64::INFINITY, |a, polyline| {
-            a.min(polyline.distance_to(&test_location))
+        .fold(f64::INFINITY, |min_distance, suburb| {
+            min_distance.min(
+                suburb
+                    .high_voltage_lines
+                    .iter()
+                    .fold(f64::INFINITY, |a, polyline| {
+                        a.min(polyline.distance_to(&test_location))
+                    }),
+            )
         });
+
     let colored_distance = if distance < 90.0 {
         format!("{:.1}", distance).red().bold()
     } else if distance < 200.0 {
