@@ -5,65 +5,6 @@ use crate::api::geocode::Address;
 use crate::api::property_data_map::SelectSuburbResponse;
 use crate::geometry;
 
-// suburb id is for propertydatamap.com
-pub fn init_postcode_to_suburb_id(
-    raw_suburb_map: HashMap<String, [String; 4]>,
-) -> HashMap<u16, u16> {
-    let mut postcode_to_code = HashMap::<u16, u16>::new();
-    for (code_str, raw_suburb_code_info) in raw_suburb_map {
-        let code = match code_str.parse::<u16>() {
-            Ok(val) => val,
-            Err(e) => panic!(
-                "failed to parse code in raw_suburb_map, expect u16 but got '{}'\n{}",
-                code_str, e
-            ),
-        };
-        // some suburb doesn't have a postcode. we don't care about them
-        if raw_suburb_code_info[1] == "None" {
-            continue;
-        }
-        let postcode = match raw_suburb_code_info[1].parse::<u16>() {
-            Ok(val) => val,
-            Err(e) => panic!(
-                "failed to parse suburb_postcode in raw_suburb_map, expect u16 but got '{}'\n{}",
-                raw_suburb_code_info[1], e
-            ),
-        };
-        postcode_to_code.insert(postcode, code);
-    }
-    postcode_to_code
-}
-
-pub fn parse_address(address: Address) -> (u16, geometry::Point) {
-    let re = Regex::new(r#"(\d{4})[, ]+Australia"#).expect("wrong regex pattern typed");
-    let captures = re
-        .captures(&address.full_address)
-        .ok_or(&format!(
-            "failed to capture post code from the address '{}'",
-            address.full_address
-        ))
-        .unwrap();
-    let postcode_str = match captures.get(1) {
-        Some(val) => val.as_str(),
-        None => panic!(
-            "failed to capture post code from the address '{}' at idx=1",
-            address.full_address
-        ),
-    };
-    let postcode = match postcode_str.parse::<u16>() {
-        Ok(val) => val,
-        Err(e) => panic!("failed to parse post code '{}' to u16\n{}", postcode_str, e),
-    };
-    (
-        postcode,
-        geometry::GeoPosition {
-            latitude_radius: address.latitude_degree.to_radians(),
-            longitude_radius: address.longitude_degree.to_radians(),
-        }
-        .to_cartesian(),
-    )
-}
-
 fn raw_position_to_point(latitude_degree: f64, longitude_degree: f64) -> geometry::Point {
     geometry::GeoPosition {
         latitude_radius: latitude_degree.to_radians(),
@@ -72,10 +13,77 @@ fn raw_position_to_point(latitude_degree: f64, longitude_degree: f64) -> geometr
     .to_cartesian()
 }
 
-pub fn parse_high_voltage_lines(
-    raw: SelectSuburbResponse,
-) -> HashMap<u16, Vec<geometry::PolyLine>> {
-    let mut high_voltage_lines = HashMap::<u16, Vec<geometry::PolyLine>>::new();
+pub struct SuburbInfo {
+    pub name: String,
+    pub id: u16,
+    pub postcode: u16,
+    pub location: geometry::Point,
+}
+
+// suburb id is for propertydatamap.com
+pub fn get_all_suburbs(
+    raw_suburb_map: HashMap<String, [String; 4]>,
+    // suburb id -> suburb location
+) -> Vec<SuburbInfo> {
+    let mut suburb_info = Vec::<SuburbInfo>::new();
+    for (code_str, raw_suburb_code_info) in raw_suburb_map {
+        // some suburb doesn't have a postcode. we don't care about them
+        if raw_suburb_code_info[1] == "None" {
+            continue;
+        }
+        let code = match code_str.parse::<u16>() {
+            Ok(val) => val,
+            Err(e) => panic!(
+                "failed to parse code in raw_suburb_map, expect u16 but got '{}'\n{}",
+                code_str, e
+            ),
+        };
+        let postcode = match raw_suburb_code_info[1].parse::<u16>() {
+            Ok(val) => val,
+            Err(e) => panic!(
+                "failed to parse suburb_postcode in raw_suburb_map, expect u16 but got '{}'\n{}",
+                raw_suburb_code_info[1], e
+            ),
+        };
+        let latitude = match raw_suburb_code_info[2].parse::<f64>() {
+            Ok(val) => val,
+            Err(e) => panic!(
+                "failed to parse latitude, expect f64 but got '{}'\n{}",
+                raw_suburb_code_info[2], e
+            ),
+        };
+        let longitude = match raw_suburb_code_info[3].parse::<f64>() {
+            Ok(val) => val,
+            Err(e) => panic!(
+                "failed to parse longitude, expect f64 but got '{}'\n{}",
+                raw_suburb_code_info[3], e
+            ),
+        };
+        suburb_info.push(SuburbInfo {
+            name: raw_suburb_code_info[0].to_owned(),
+            id: code,
+            postcode: postcode,
+            location: raw_position_to_point(latitude, longitude),
+        });
+    }
+    suburb_info
+}
+
+pub fn parse_address(address: Address) -> geometry::Point {
+    geometry::GeoPosition {
+        latitude_radius: address.latitude_degree.to_radians(),
+        longitude_radius: address.longitude_degree.to_radians(),
+    }
+    .to_cartesian()
+}
+
+pub struct HighVoltageLine {
+    pub line: geometry::PolyLine,
+    pub id: String,
+}
+
+pub fn parse_high_voltage_lines(raw: SelectSuburbResponse) -> HashMap<u16, Vec<HighVoltageLine>> {
+    let mut high_voltage_lines = HashMap::<u16, Vec<HighVoltageLine>>::new();
     let lines_map = raw.selected_lat_lon;
     let voltages_map = raw.selected_popup_info;
     for (line_id, line) in lines_map {
@@ -111,9 +119,18 @@ pub fn parse_high_voltage_lines(
             ),
         };
         match high_voltage_lines.get_mut(&voltage) {
-            Some(arr) => arr.push(geometry::PolyLine::new(points)),
+            Some(arr) => arr.push(HighVoltageLine {
+                line: geometry::PolyLine::new(points),
+                id: line_id,
+            }),
             None => {
-                high_voltage_lines.insert(voltage, vec![geometry::PolyLine::new(points)]);
+                high_voltage_lines.insert(
+                    voltage,
+                    vec![HighVoltageLine {
+                        line: geometry::PolyLine::new(points),
+                        id: line_id,
+                    }],
+                );
             }
         }
     }
@@ -141,13 +158,35 @@ mod tests_init_suburbs {
                 [
                     "WEST RYDE".to_owned(),
                     "2114".to_owned(),
-                    "33.80736158843438".to_owned(),
+                    "-33.80736158843438".to_owned(),
                     "151.08385175565996".to_owned(),
                 ],
             ),
         ]);
-        let map = init_postcode_to_suburb_id(raw_suburb_map);
-        assert_eq!(map, HashMap::from([(2126, 3900), (2114, 371)]))
+        let info = get_all_suburbs(raw_suburb_map);
+        assert_eq!(info.len(), 2);
+        let cherrybrook_idx = if info[0].postcode == 2126 { 0 } else { 1 };
+        let west_ryde_idx = 1 - cherrybrook_idx;
+        assert_eq!(info[cherrybrook_idx].name, "CHERRYBROOK");
+        assert_eq!(info[cherrybrook_idx].postcode, 2126);
+        assert_eq!(info[cherrybrook_idx].id, 3900);
+        info[cherrybrook_idx].location.assert_close_to(
+            &geometry::Point {
+                x: -14813.3,
+                y: 17856.5,
+            },
+            1.0,
+        );
+        assert_eq!(info[west_ryde_idx].name, "WEST RYDE");
+        assert_eq!(info[west_ryde_idx].postcode, 2114);
+        assert_eq!(info[west_ryde_idx].id, 371);
+        info[west_ryde_idx].location.assert_close_to(
+            &geometry::Point {
+                x: -11323.9,
+                y: 8347.9,
+            },
+            1.0,
+        )
     }
 
     #[test]
@@ -172,8 +211,18 @@ mod tests_init_suburbs {
                 ],
             ),
         ]);
-        let map = init_postcode_to_suburb_id(raw_suburb_map);
-        assert_eq!(map, HashMap::from([(2126, 3900)]))
+        let info = get_all_suburbs(raw_suburb_map);
+        assert_eq!(info.len(), 1);
+        assert_eq!(info[0].name, "CHERRYBROOK");
+        assert_eq!(info[0].postcode, 2126);
+        assert_eq!(info[0].id, 3900);
+        info[0].location.assert_close_to(
+            &geometry::Point {
+                x: -14813.3,
+                y: 17856.5,
+            },
+            1.0,
+        )
     }
 
     #[test]
@@ -188,7 +237,7 @@ mod tests_init_suburbs {
                 "151.04624440456263".to_owned(),
             ],
         )]);
-        init_postcode_to_suburb_id(raw_suburb_map);
+        get_all_suburbs(raw_suburb_map);
     }
 
     #[test]
@@ -203,7 +252,7 @@ mod tests_init_suburbs {
                 "151.04624440456263".to_owned(),
             ],
         )]);
-        init_postcode_to_suburb_id(raw_suburb_map);
+        get_all_suburbs(raw_suburb_map);
     }
 }
 
@@ -218,8 +267,7 @@ mod test_parse_address {
             latitude_degree: -33.921119441679096,
             longitude_degree: 151.1984099658811,
         };
-        let (postcode, location) = parse_address(address);
-        assert_eq!(postcode, 2126);
+        let location = parse_address(address);
         location.assert_close_to(
             &geometry::Point {
                 x: -738.6767504988909,
@@ -282,7 +330,8 @@ mod test_parse_high_voltage_lines {
         let high_voltage_lines = parse_high_voltage_lines(raw_response);
         let v66kv = high_voltage_lines.get(&66).unwrap();
         assert_eq!(v66kv.len(), 1);
-        v66kv[0].assert_close_to(
+        assert_eq!(v66kv[0].id, "2048");
+        v66kv[0].line.assert_close_to(
             &PolyLine::new(vec![
                 Point {
                     x: -738.6767504988909,
@@ -298,19 +347,9 @@ mod test_parse_high_voltage_lines {
         let v123kv = high_voltage_lines.get(&123).unwrap();
         assert_eq!(v123kv.len(), 2);
         // line 512
-        let line_512_idx = if v123kv[0].get_vertices()[0].close_to(
-            &Point {
-                x: -738.6767504988909,
-                y: -4301.452856541296,
-            },
-            1.0,
-        ) {
-            0
-        } else {
-            1
-        };
+        let line_512_idx = if v123kv[0].id == "512" { 0 } else { 1 };
         let line_1024_idx = 1 - line_512_idx;
-        v123kv[line_512_idx].assert_close_to(
+        v123kv[line_512_idx].line.assert_close_to(
             &PolyLine::new(vec![
                 Point {
                     x: -738.6767504988909,
@@ -323,7 +362,8 @@ mod test_parse_high_voltage_lines {
             ]),
             1.0,
         );
-        v123kv[line_1024_idx].assert_close_to(
+        assert_eq!(v123kv[line_512_idx].id, "512");
+        v123kv[line_1024_idx].line.assert_close_to(
             &PolyLine::new(vec![
                 Point {
                     x: 7513.165838856347,
@@ -336,6 +376,7 @@ mod test_parse_high_voltage_lines {
             ]),
             1.0,
         );
+        assert_eq!(v123kv[line_1024_idx].id, "1024");
     }
 
     #[test]

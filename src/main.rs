@@ -2,8 +2,9 @@
 extern crate log;
 extern crate simplelog;
 use clap::Parser;
+use data_source::{HighVoltageLine, SuburbInfo};
 use simplelog::{ColorChoice, ConfigBuilder, LevelFilter, TermLogger, TerminalMode};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod api;
 mod data_source;
@@ -43,35 +44,81 @@ fn print_results(distances: &HashMap<u16, f64>, mut voltages: Vec<u16>) {
         }
     }
 }
+
+fn filter_suburb(
+    place: &geometry::Point,
+    suburbs: Vec<SuburbInfo>,
+    range_m: f64,
+) -> Vec<SuburbInfo> {
+    suburbs
+        .into_iter()
+        .filter(|s| s.location.distance_to(&place) < range_m)
+        .collect()
+}
+
+fn aggregate_high_voltage_lines(
+    mut acc: HashMap<u16, Vec<HighVoltageLine>>,
+    map: HashMap<u16, Vec<HighVoltageLine>>,
+    cached_line_id: &mut HashSet<String>,
+) -> HashMap<u16, Vec<HighVoltageLine>> {
+    {
+        for (k, v) in map {
+            let mut lines = Vec::<HighVoltageLine>::new();
+            for line in v {
+                if cached_line_id.contains(&line.id) {
+                    continue;
+                }
+                cached_line_id.insert(line.id.to_owned());
+                lines.push(line);
+            }
+            match acc.get_mut(&k) {
+                Some(existing_lines) => {
+                    existing_lines.extend(lines);
+                }
+                None => {
+                    acc.insert(k, lines);
+                }
+            }
+        }
+        acc
+    }
+}
+
 fn main() {
     let args: Args = Args::parse();
     init_logger(args.verbose);
     let raw_suburb_map = api::property_data_map::server_init_init();
-    let postcode_to_suburb_id = data_source::init_postcode_to_suburb_id(raw_suburb_map);
-    debug!("postcode_to_suburb_id calculated");
     let address = api::geocode::find_address(&args.address);
-    let (postcode, location) = data_source::parse_address(address);
-    debug!("address parsed, postcode is '{postcode}'");
-    let suburb_id = match postcode_to_suburb_id.get(&postcode) {
-        Some(id) => *id,
-        None => panic!("can not find suburb id from postcode '{postcode}'"),
-    };
-    debug!("suburb id found as '{}'", suburb_id);
-    let raw = api::property_data_map::select_suburb(suburb_id);
-    let high_voltage_lines = data_source::parse_high_voltage_lines(raw);
+    let location = data_source::parse_address(address);
+    let suburbs_info: Vec<SuburbInfo> = data_source::get_all_suburbs(raw_suburb_map);
+    debug!("postcode_to_suburb_id calculated");
+
+    let filtered_suburb_infos = filter_suburb(&location, suburbs_info, 5_000.0);
+    let surrounding_suburbs_name = filtered_suburb_infos
+        .iter()
+        .map(|s| s.name.to_owned())
+        .collect::<Vec<String>>();
+    debug!(
+        "suburbs within 5km filtered: {:?}",
+        surrounding_suburbs_name
+    );
+
+    let mut cached_line_id = HashSet::<String>::new();
+    let high_voltage_lines = filtered_suburb_infos
+        .iter()
+        .map(|s| api::property_data_map::select_suburb(s.id, &s.name))
+        .map(|raw| data_source::parse_high_voltage_lines(raw))
+        .fold(HashMap::<u16, Vec<HighVoltageLine>>::new(), |acc, map| {
+            aggregate_high_voltage_lines(acc, map, &mut cached_line_id)
+        });
     debug!("suburb info parsed");
-    //     if args.verbose {
-    //         export_suburb_to_vtk(&Path::new(".").join("debug"), &suburb_data, &test_location);
-    //     }
     // voltage -> distance
     let mut distances = HashMap::<u16, f64>::new();
     let mut voltages = Vec::<u16>::new();
     for (voltage, lines) in high_voltage_lines {
-        let distance = lines
-            .iter()
-            .fold(f64::INFINITY, |a, l: &geometry::PolyLine| {
-                a.min(l.distance_to(&location))
-            });
+        let distance = lines.iter().fold(f64::INFINITY, |acc, l| {
+            acc.min(l.line.distance_to(&location))
+        });
         distances.insert(voltage, distance);
         voltages.push(voltage);
     }
