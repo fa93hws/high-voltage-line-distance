@@ -4,7 +4,10 @@ extern crate simplelog;
 use clap::Parser;
 use data_source::{HighVoltageLine, SuburbInfo};
 use simplelog::{ColorChoice, ConfigBuilder, LevelFilter, TermLogger, TerminalMode};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    path,
+};
 
 mod api;
 mod data_source;
@@ -18,6 +21,9 @@ struct Args {
 
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
+
+    #[arg(long, default_value_t = false)]
+    no_cache: bool,
 }
 
 fn init_logger(verbose: bool) {
@@ -87,7 +93,12 @@ fn aggregate_high_voltage_lines(
 fn main() {
     let args: Args = Args::parse();
     init_logger(args.verbose);
-    let raw_suburb_map = api::property_data_map::server_init_init();
+    let cache = api::cache::Cache::new(
+        path::PathBuf::from("./cache/api_cache.json"),
+        !args.no_cache,
+    );
+
+    let raw_suburb_map = api::property_data_map::server_init_init(&cache);
     let address = api::geocode::find_address(&args.address);
     let location = data_source::parse_address(address);
     let suburbs_info: Vec<SuburbInfo> = data_source::get_all_suburbs(raw_suburb_map);
@@ -106,7 +117,7 @@ fn main() {
     let mut cached_line_id = HashSet::<String>::new();
     let high_voltage_lines = filtered_suburb_infos
         .iter()
-        .map(|s| api::property_data_map::select_suburb(s.id, &s.name))
+        .map(|s| api::property_data_map::select_suburb(s.id, &s.name, &cache))
         .map(|raw| data_source::parse_high_voltage_lines(raw))
         .fold(HashMap::<u16, Vec<HighVoltageLine>>::new(), |acc, map| {
             aggregate_high_voltage_lines(acc, map, &mut cached_line_id)

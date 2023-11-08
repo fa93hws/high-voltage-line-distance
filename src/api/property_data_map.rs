@@ -1,6 +1,10 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
+use crate::api::cache::Caching;
+
+use super::cache::Cache;
+
 fn get_form_data(suburb_code: &str) -> HashMap<&str, &str> {
     HashMap::from([
         ("Local_Language", "ZHS"),
@@ -14,25 +18,43 @@ fn get_form_data(suburb_code: &str) -> HashMap<&str, &str> {
     ])
 }
 
-pub fn server_init_init() -> HashMap<String, [String; 4]> {
+pub fn server_init_init(cache_store: &Cache) -> HashMap<String, [String; 4]> {
     #[derive(Deserialize, Debug)]
     struct RawInitResponse {
         #[serde(rename(deserialize = "Array_Suburb"))]
         array_suburb: String,
     }
+    let cache_key = "property_data_map_server_init_init";
 
-    let client = reqwest::blocking::Client::new();
-    let endpoint =
-        "https://www.propertydatamap.com.au/Property/00_PHP_9/Server_Initial_Initial.php";
-    let response = client
-        .post(endpoint)
-        .form(&get_form_data("4167"))
-        .send()
-        .unwrap()
-        .json::<RawInitResponse>()
-        .unwrap();
+    let body_text = match cache_store.read(cache_key) {
+        Ok(val) => val,
+        Err(e) => {
+            debug!("cache not found for '{}'.\nError: {}", cache_key, e);
+            let client = reqwest::blocking::Client::new();
+            let endpoint =
+                "https://www.propertydatamap.com.au/Property/00_PHP_9/Server_Initial_Initial.php";
+            let response = client
+                .post(endpoint)
+                .form(&get_form_data("4167"))
+                .send()
+                .unwrap()
+                .text()
+                .unwrap();
+            let write_result = cache_store.write(cache_key, response.clone());
+            if write_result.is_err() {
+                warn!(
+                    "failed to write cache for '{}'.\nError: {:?}",
+                    cache_key,
+                    write_result.err(),
+                )
+            }
+            response
+        }
+    };
+
+    let body_json = serde_json::from_str::<RawInitResponse>(&body_text).unwrap();
     let raw_suburb_map =
-        serde_json::from_str::<HashMap<String, [String; 4]>>(&response.array_suburb)
+        serde_json::from_str::<HashMap<String, [String; 4]>>(&body_json.array_suburb)
             .expect("failed to parse ARRAY_SUBURB to map[str -> [str; 4]]");
     trace!("suburb post code raw data received");
     raw_suburb_map
@@ -55,7 +77,11 @@ pub struct SelectSuburbResponse {
     pub selected_popup_info: HashMap<String, Vec<String>>,
 }
 
-pub fn select_suburb(suburb_id: u16, suburb_name: &str) -> SelectSuburbResponse {
+pub fn select_suburb(
+    suburb_id: u16,
+    suburb_name: &str,
+    cache_store: &Cache,
+) -> SelectSuburbResponse {
     #[derive(Deserialize, Debug)]
     struct RawSelectSuburbResponse {
         #[serde(rename(deserialize = "Array_Data"))]
@@ -71,18 +97,35 @@ pub fn select_suburb(suburb_id: u16, suburb_name: &str) -> SelectSuburbResponse 
         geometry_selected_popup_info: HashMap<String, Vec<String>>,
     }
 
-    debug!("fetching suburb response parsed for {}", suburb_name);
-    let client = reqwest::blocking::Client::new();
-    let endpoint =
-        "https://www.propertydatamap.com.au/Property/00_PHP_9/Server_Map_SelectSuburb.php";
-    let response = client
-        .post(endpoint)
-        .form(&get_form_data(&suburb_id.to_string()))
-        .send()
-        .unwrap()
-        .json::<RawSelectSuburbResponse>()
-        .unwrap();
-    if response
+    let cache_key = format!("property_data_map_select_suburb_{}", suburb_id);
+    let body_text = match cache_store.read(&cache_key) {
+        Ok(val) => val,
+        Err(e) => {
+            debug!("cache not found for '{}'.\nError: {}", cache_key, e);
+            debug!("fetching suburb response parsed for {}", suburb_name);
+            let client = reqwest::blocking::Client::new();
+            let endpoint =
+                "https://www.propertydatamap.com.au/Property/00_PHP_9/Server_Map_SelectSuburb.php";
+            let response = client
+                .post(endpoint)
+                .form(&get_form_data(&suburb_id.to_string()))
+                .send()
+                .unwrap()
+                .text()
+                .unwrap();
+            let write_result = cache_store.write(&cache_key, response.clone());
+            if write_result.is_err() {
+                warn!(
+                    "failed to write cache for '{}'.\nError: {:?}",
+                    cache_key,
+                    write_result.err(),
+                )
+            }
+            response
+        }
+    };
+    let body_json = serde_json::from_str::<RawSelectSuburbResponse>(&body_text).unwrap();
+    if body_json
         .array_data
         // when there is no voltage lines, the return value becomes an array of some random value
         // instead of an empty object. It's weird but that's what happens.
@@ -94,7 +137,7 @@ pub fn select_suburb(suburb_id: u16, suburb_name: &str) -> SelectSuburbResponse 
             selected_popup_info: HashMap::new(),
         };
     }
-    let array_data = serde_json::from_str::<RawArrayData>(&response.array_data)
+    let array_data = serde_json::from_str::<RawArrayData>(&body_json.array_data)
         .expect("failed to parse array_data for suburb_id={}");
     let mut selected_lat_lon = HashMap::<String, SelectedLatLon>::new();
     for (k, v) in array_data.geometry_selected_latlon {

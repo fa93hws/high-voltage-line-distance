@@ -1,4 +1,3 @@
-use regex::Regex;
 use std::collections::HashMap;
 
 use crate::api::geocode::Address;
