@@ -56,7 +56,7 @@ pub fn server_init_init(cache_store: &Cache) -> HashMap<String, [String; 4]> {
     let raw_suburb_map =
         serde_json::from_str::<HashMap<String, [String; 4]>>(&body_json.array_suburb)
             .expect("failed to parse ARRAY_SUBURB to map[str -> [str; 4]]");
-    trace!("suburb post code raw data received");
+    trace!("suburb goe location fetched");
     raw_suburb_map
 }
 

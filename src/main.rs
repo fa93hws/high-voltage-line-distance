@@ -40,6 +40,9 @@ fn init_logger(verbose: bool) {
 }
 
 fn print_results(distances: &HashMap<u16, f64>, mut voltages: Vec<u16>) {
+    if distances.is_empty() {
+        info!("no high voltage power line found in this area.");
+    }
     let mut min_distance = f64::INFINITY;
     voltages.sort_by(|a, b| b.cmp(a));
     for voltage in voltages {
