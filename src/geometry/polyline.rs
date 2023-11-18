@@ -19,10 +19,10 @@ impl PolyLine {
         let mut lines = Vec::<LineSegment>::new();
         let mut idx = 0;
         while idx < points.len() - 1 {
-            lines.push(LineSegment {
-                a: points[idx].clone(),
-                b: points[idx + 1].clone(),
-            });
+            lines.push(LineSegment::new(
+                points[idx].clone(),
+                points[idx + 1].clone(),
+            ));
             idx += 1;
         }
         PolyLine { lines }
@@ -58,16 +58,6 @@ impl PolyLine {
             }
             distances.iter().fold(f64::INFINITY, |a, d| a.min(*d))
         })
-    }
-
-    pub fn get_vertices(&self) -> Vec<Point> {
-        let mut points = self
-            .lines
-            .iter()
-            .map(|line| line.a.clone())
-            .collect::<Vec<Point>>();
-        points.push(self.lines.last().unwrap().b.clone());
-        points
     }
 }
 

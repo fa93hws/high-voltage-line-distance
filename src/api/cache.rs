@@ -7,6 +7,7 @@ use std::path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const CACHE_VERSION: &str = "v1";
+const CACHE_EXPIRE_DAYS: u64 = 32;
 
 #[derive(Serialize, Deserialize)]
 pub struct CacheEntity {
@@ -71,7 +72,7 @@ impl Caching for Cache {
             key.to_owned(),
             CacheEntity {
                 version: CACHE_VERSION.to_owned(),
-                expire: time_now.as_secs() + 24 * 60 * 60,
+                expire: time_now.as_secs() + CACHE_EXPIRE_DAYS * 24 * 60 * 60,
                 content,
             },
         );
@@ -142,7 +143,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs()
-            + 24 * 60 * 60
+            + 24 * 60 * 60 * CACHE_EXPIRE_DAYS
     }
 
     mod write {
@@ -323,7 +324,7 @@ mod tests {
                     "foo",
                     CacheEntity {
                         version: CACHE_VERSION.to_owned(),
-                        expire: expire - 48 * 60 * 60,
+                        expire: expire - (24 + 1) * 60 * 60 * CACHE_EXPIRE_DAYS,
                         content: "bar".to_owned(),
                     },
                 )]))
